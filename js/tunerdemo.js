@@ -38,8 +38,6 @@ var detectorElem,
 var WIDTH=300;
 var CENTER=150;
 var HEIGHT=42;
-var confidence = 0;
-var currentPitch = 0;
 
 var rafID = null;
 
@@ -156,11 +154,13 @@ function updatePitch( ) {
 	var cycles = new Array;
 	analyser.getByteTimeDomainData( buf );
 
-	autoCorrelate( buf, audioContext.sampleRate );
+        var pitch = autoCorrelate( buf, audioContext.sampleRate );
+        var confidence = pitch.confidence;
+        var currentPitch = pitch.pitch;
 
 	canvasContext.clearRect(0,0,WIDTH,HEIGHT);
 
- 	if (confidence <10) {
+ 	if (confidence < 10) {
  		detectorElem.className = "vague";
 	 	pitchElem.innerText = "--";
 		noteElem.innerText = "-";
