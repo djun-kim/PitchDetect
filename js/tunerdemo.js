@@ -67,7 +67,7 @@ window.onload = function() {
 	canvasContext = document.getElementById( "output" ).getContext("2d");
 
 	detectorElem.ondragenter = function () { 
-		this.classList.add("droptarget"); 
+		this.classList.add("droptarget");
 		return false; };
 	detectorElem.ondragleave = function () { this.classList.remove("droptarget"); return false; };
 	detectorElem.ondrop = function (e) {
@@ -88,13 +88,10 @@ window.onload = function() {
 	  	reader.readAsArrayBuffer(e.dataTransfer.files[0]);
 	  	return false;
 	};
-
-
-
 }
 
-function error() {
-    alert('Stream generation failed.');
+function error(err) {
+    alert('Stream generation failed: ' + err.name);
 }
 
 function getUserMedia(dictionary, callback) {
