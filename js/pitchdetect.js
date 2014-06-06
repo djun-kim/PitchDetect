@@ -41,6 +41,13 @@ var HEIGHT=42;
 var confidence = 0;
 var currentPitch = 0;
 
+var rafID = null;
+var buflen = 2048;
+var buf = new Uint8Array( buflen );
+var MINVAL = 134;  // 128 == zero.  MINVAL is the "minimum detected signal" level.
+
+var noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
 window.onload = function() {
 	var request = new XMLHttpRequest();
 	request.open("GET", "../sounds/whistling3.ogg", true);
@@ -148,52 +155,6 @@ function togglePlayback() {
     return "stop";
 }
 
-var rafID = null;
-var tracks = null;
-var buflen = 2048;
-var buf = new Uint8Array( buflen );
-var MINVAL = 134;  // 128 == zero.  MINVAL is the "minimum detected signal" level.
-
-/*
-function findNextPositiveZeroCrossing( start ) {
-	var i = Math.ceil( start );
-	var last_zero = -1;
-	// advance until we're zero or negative
-	while (i<buflen && (buf[i] > 128 ) )
-		i++;
-	if (i>=buflen)
-		return -1;
-
-	// advance until we're above MINVAL, keeping track of last zero.
-	while (i<buflen && ((t=buf[i]) < MINVAL )) {
-		if (t >= 128) {
-			if (last_zero == -1)
-				last_zero = i;
-		} else
-			last_zero = -1;
-		i++;
-	}
-
-	// we may have jumped over MINVAL in one sample.
-	if (last_zero == -1)
-		last_zero = i;
-
-	if (i==buflen)	// We didn't find any more positive zero crossings
-		return -1;
-
-	// The first sample might be a zero.  If so, return it.
-	if (last_zero == 0)
-		return 0;
-
-	// Otherwise, the zero might be between two values, so we need to scale it.
-
-	var t = ( 128 - buf[last_zero-1] ) / (buf[last_zero] - buf[last_zero-1]);
-	return last_zero+t;
-}
-*/
-
-var noteStrings = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
 function noteFromPitch( frequency ) {
 	var noteNum = 12 * (Math.log( frequency / 440 )/Math.log(2) );
 	return Math.round( noteNum ) + 69;
@@ -206,42 +167,6 @@ function frequencyFromNoteNumber( note ) {
 function centsOffFromPitch( frequency, note ) {
 	return ( 1200 * Math.log( frequency / frequencyFromNoteNumber( note ))/Math.log(2) );
 }
-
-// this is a float version of the algorithm below - but it's not currently used.
-/*
-function autoCorrelateFloat( buf, sampleRate ) {
-	var MIN_SAMPLES = 4;	// corresponds to an 11kHz signal
-	var MAX_SAMPLES = 1000; // corresponds to a 44Hz signal
-	var SIZE = 1000;
-	var best_offset = -1;
-	var best_correlation = 0;
-	var rms = 0;
-
-	if (buf.length < (SIZE + MAX_SAMPLES - MIN_SAMPLES))
-		return -1;  // Not enough data
-
-	for (var i=0;i<SIZE;i++)
-		rms += buf[i]*buf[i];
-	rms = Math.sqrt(rms/SIZE);
-
-	for (var offset = MIN_SAMPLES; offset <= MAX_SAMPLES; offset++) {
-		var correlation = 0;
-
-		for (var i=0; i<SIZE; i++) {
-			correlation += Math.abs(buf[i]-buf[i+offset]);
-		}
-		correlation = 1 - (correlation/SIZE);
-		if (correlation > best_correlation) {
-			best_correlation = correlation;
-			best_offset = offset;
-		}
-	}
-	if ((rms>0.1)&&(best_correlation > 0.1)) {
-		console.log("f = " + sampleRate/best_offset + "Hz (rms: " + rms + " confidence: " + best_correlation + ")");
-	}
-//	var best_frequency = sampleRate/best_offset;
-}
-*/
 
 function autoCorrelate( buf, sampleRate ) {
 	var MIN_SAMPLES = 4;	// corresponds to an 11kHz signal
@@ -288,56 +213,15 @@ function updatePitch( time ) {
 	analyser.getByteTimeDomainData( buf );
 
 /*
-// old zero-crossing code
-
-	var i=0;
-	// find the first point
-	var last_zero = findNextPositiveZeroCrossing( 0 );
-
-	var n=0;
-	// keep finding points, adding cycle lengths to array
-	while ( last_zero != -1) {
-		var next_zero = findNextPositiveZeroCrossing( last_zero + 1 );
-		if (next_zero > -1)
-			cycles.push( next_zero - last_zero );
-		last_zero = next_zero;
-
-		n++;
-		if (n>1000)
-			break;
-	}
-
-	// 1?: average the array
-	var num_cycles = cycles.length;
-	var sum = 0;
-	var pitch = 0;
-
-	for (var i=0; i<num_cycles; i++) {
-		sum += cycles[i];
-	}
-
-	if (num_cycles) {
-		sum /= num_cycles;
-		pitch = audioContext.sampleRate/sum;
-	}
-
-// confidence = num_cycles / num_possible_cycles = num_cycles / (audioContext.sampleRate/)
-	var confidence = (num_cycles ? ((num_cycles/(pitch * buflen / audioContext.sampleRate)) * 100) : 0);
-*/
-
-/*
 	console.log( 
-		"Cycles: " + num_cycles + 
-		" - average length: " + sum + 
-		" - pitch: " + pitch + "Hz " +
-		" - note: " + noteFromPitch( pitch ) +
+		"Cycles: " + cycles.length +
+		" - pitch: " + currentPitch + "Hz " +
+                " - note: " + noteStrings[noteFromPitch(currentPitch) % 12] +
 		" - confidence: " + confidence + "% "
 		);
 */
 	// possible other approach to confidence: sort the array, take the median; go through the array and compute the average deviation
 	autoCorrelate( buf, audioContext.sampleRate );
-
-// 	detectorElem.className = (confidence>50)?"confident":"vague";
 
 	canvasContext.clearRect(0,0,WIDTH,HEIGHT);
 
@@ -375,7 +259,8 @@ function updatePitch( time ) {
 		}
 	}
 
-	if (!window.requestAnimationFrame)
+	if (!window.requestAnimationFrame) {
 		window.requestAnimationFrame = window.webkitRequestAnimationFrame;
+        }
 	rafID = window.requestAnimationFrame( updatePitch );
 }
